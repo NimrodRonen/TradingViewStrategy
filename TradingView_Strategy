@@ -1,84 +1,135 @@
 //@version=5
-strategy("Omri MACD Strategy", overlay=true)
+strategy(title="Omri average buy/sell project", overlay=true)
 
-var posDirection = "None"
+amoutOfTrades = input.int(defval = 20, title = "amout of trades")
+//countLenghtOutLine = input.int(defval = 8, title = "amount of candins to count out of lenght")
 
-candlesLen = input.int(defval = 3, group = "side arguements", title = "Count of Candles")
-var bool[] isOutOfRange = array.new_bool(candlesLen,false)
+var string[] tradesID = array.new_string(amoutOfTrades, na)
+var situationOfTrades = array.new_string(amoutOfTrades, "None")
+var currentId = "0"
+var prevCCI = float(na)
+var prevSmooth = float(na)
+//var countLenght = 0
+var underLine = -100
+var upperLine = 100
 
-dataType = input.source(close, "Data source")
-fastLen = input(20, title = "Fast moving average")
-typeMA = input.string(title = "Method", defval = "SMA", options=["SMA", "EMA", "SMMA (RMA)", "WMA", "VWMA"], group="Smoothing")
+if barstate.isfirst
+    for i = 0 to amoutOfTrades - 1
+        array.set(tradesID, i, str.tostring(i))
+
+Source = input.source(close, title = "source")
+maLeght = input.int(defval = 20, title = "Moving average lenght")
 smoothingLength = input.int(title = "Length", defval = 5, minval = 1, maxval = 100, group="Smoothing")
+var Lenght = input.int(defval = 1000, title = "Count Lenght Under/Upper Line", group = "Side tools")
+var highLowToConsider = input.int(defval = 0, title = "get up the High and Low Line", group = "Side tools")
+var countLenght = 0
 
-deltaMaFromClose = input.float(title = "Delta moving average from Close", defval = 2.2, group = "side arguements")
-epsilon = input.float(title = "epsilon calculate", defval = 0, group = "side arguements")
-
-var bool isCCIUpperLimit = false
-var bool isCCIDownLimit = false
-
-CCI = ta.cci(dataType, fastLen)
-Ma = ta.sma(dataType, fastLen)
-
-isCandlesTrue(Candles) =>
-    bool isTrue = true
-    for i = 0 to array.size(Candles) - 1
-        if array.get(Candles, i) == false
-            isTrue := false
-            break
-    isTrue
-
-placeToPut(Candles) =>
-    int place = 0
-    for i = 0 to array.size(Candles) - 1
-        place := i
-        if array.get(Candles, i) == false
-            break
-    place
-
-upperLimit = 100 + epsilon
-LowerLimit = -100 - epsilon
+CCI = ta.cci(Source, maLeght)
 smoothingLine = ta.sma(CCI, smoothingLength)
-positionId = "CCI_Averge"
-isCrossOver = ta.crossover(CCI,smoothingLine)
-isCrossUnder = ta.crossunder(CCI,smoothingLine)
-//deltaCrash = CCI-smoothingLine
 
-if posDirection == "None" or (CCI > LowerLimit and CCI < upperLimit)
-    for i = 0 to array.size(isOutOfRange) - 1
-        array.set(isOutOfRange, i, false)
+var isCCIUpper = CCI >= upperLine
+var isCCIUnder = CCI <= underLine
+isBetween = (CCI < upperLine) and (CCI > underLine)
 
+var isCrosedDown = ta.crossunder(CCI, smoothingLine)
+var isCrosedUpper = ta.crossover(CCI, smoothingLine)
 
-if (math.abs(close - Ma)) <= deltaMaFromClose
-    if isCCIUpperLimit
-        array.set(isOutOfRange, placeToPut(isOutOfRange), true)
-        if isCandlesTrue(isOutOfRange) and posDirection == "Long"
-            strategy.close(positionId) //stop
-            posDirection := "None"
-        if smoothingLine > upperLimit
-            if(isCrossUnder)
-                strategy.entry(positionId, strategy.short, comment = "Start Short")  
-                isOutOfRange := array.new_bool(candlesLen,false)
-                posDirection := "Short" 
+situationTrades(situationTrades, theSituation) =>
+    situation = "None"
+    for i = 0 to amoutOfTrades - 1
+        if array.get(situationTrades, i) != "None"
+            situation := array.get(situationTrades, i)
+            break
+    situation == theSituation
+
+closeAll() =>
+    nowId = "0"
+    for i = 0 to amoutOfTrades - 1
+        nowId := str.tostring(i)
+        strategy.close(nowId)
+    
+isCrossingUpper() =>
+    crossing = false
+    if na(prevCCI) and na(prevSmooth)
+        crossing := false
+    else if prevCCI < prevSmooth and CCI > smoothingLine
+        crossing := true
+    crossing
+
+isCrossingDown() =>
+    crossing = false
+    if na(prevCCI) and na(prevSmooth)
+        crossing := false
+    else if prevCCI > prevSmooth and CCI < smoothingLine
+        crossing := true
+    crossing
+
+if not isCrosedUpper
+    isCrosedUpper := isCrossingUpper()
+if not isCrosedDown
+    isCrosedDown := isCrossingDown()
+
+isclosedAll = false
+intID = math.floor(str.tonumber(currentId))
+
+if isCCIUpper
+    if isCrosedDown and countLenght <= Lenght
+        countLenght := countLenght + 1
+        if situationTrades(situationOfTrades, "Long")
+            closeAll()
+            situationOfTrades := array.new_string(amoutOfTrades, "None")
+            currentId := "0"
+            isclosedAll := true
         
+        if not isclosedAll
+            strategy.entry(currentId, strategy.short, comment = "Short, ID: " + currentId)
+            array.set(situationOfTrades, intID, "Short")
+            isclosedAll := false
 
-    else if isCCIDownLimit
-        array.set(isOutOfRange, placeToPut(isOutOfRange), true)
-        if posDirection == "Short" and isCandlesTrue(isOutOfRange)
-            strategy.close(positionId) // stop
-            posDirection := "None"
-        if smoothingLine < LowerLimit
-            if(isCrossOver)
-                strategy.entry(positionId, strategy.long, comment = "Start Long")
-                isOutOfRange := array.new_bool(candlesLen,false)
-                posDirection := "Long"
-        
+            if intID + 1 <= amoutOfTrades
+                currentId := str.tostring(intID + 1)
 
-// update in late the paremeters
-if CCI >= upperLimit
-    isCCIUpperLimit := true
-    isCCIDownLimit := false
-else
-    isCCIUpperLimit := false
-    if CCI <= LowerLimit   
-        isCCIDownLimit := true
+else if isCCIUnder
+    if isCrosedUpper and countLenght <= Lenght
+        countLenght := countLenght + 1
+        if situationTrades(situationOfTrades, "Short")
+            closeAll()
+            situationOfTrades := array.new_string(amoutOfTrades, "None")
+            currentId := "0"
+            isclosedAll := true
+
+        if not isclosedAll
+            strategy.entry(currentId, strategy.long, comment = "Long, ID: " + currentId)
+            array.set(situationOfTrades, intID, "Long")
+            isclosedAll := false
+
+            if intID + 1 <= amoutOfTrades
+                currentId := str.tostring(intID + 1)
+
+if isBetween
+
+
+    isCrosedDown := false
+    isCrosedUpper := false
+    isCCIUpper := false
+    isCCIUnder := false
+
+if CCI < upperLine - highLowToConsider and CCI > underLine + highLowToConsider
+    countLenght := 0
+
+else if not isCCIUpper or not isCCIUnder
+    isCCIUpper := CCI >= upperLine
+    isCCIUnder := CCI <= underLine
+
+//special case
+if (prevCCI < CCI and prevCCI < underLine and CCI > upperLine) or (prevCCI > CCI and prevCCI > underLine and CCI < upperLine)
+    isCrosedDown := false
+    isCrosedUpper := false
+    isCCIUpper := false
+    isCCIUnder := false
+    countLenght := 0
+
+prevCCI := CCI
+prevSmooth := smoothingLine
+
+
