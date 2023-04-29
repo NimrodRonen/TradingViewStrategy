@@ -19,7 +19,7 @@ class IBApi(EWrapper, EClient):
             print(e)
     
     def error(self, id, errorCode, errorMsg):
-        print(errorCode)
+        print("error code: " + str(errorCode))
         print(errorMsg)
 
 
@@ -29,7 +29,7 @@ class Bot:
     def __init__(self):
         #connect to IB on __init__ (constractor in c# and java therms)
         self.ib = IBApi()
-        self.ib.connect("127.0.0.1", 7496, 1)
+        self.ib.connect("127.0.0.1", 7497, 1)
 
         #saperate to threads
         ib_thread = threading.Thread(target=self.run_loop, daemon=True)
@@ -41,7 +41,7 @@ class Bot:
         symbol = input("Enter the symbol you want to trade in:")
         contract = Contract() #use to stream a real-time or historycal object
         contract.symbol = symbol.upper()
-        contract.SecType = "STK"
+        contract.secType = "STK"
         contract.exchange = "SMART"
         contract.currency = "USD"
 
