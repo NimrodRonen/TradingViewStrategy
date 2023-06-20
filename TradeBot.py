@@ -15,6 +15,8 @@ class IBApi(EWrapper, EClient):
         super().realtimeBar(reqId, time, open_, high, low, close, volume, wap, count)
         try:
             bot.on_bar_update(reqId, time, open_, high, low, close, volume, wap, count)
+        except BaseExceptionGroup as Be:
+            print(Be)
         except Exception as e:
             print(e)
     
@@ -29,7 +31,7 @@ class Bot:
     def __init__(self):
         #connect to IB on __init__ (constractor in c# and java therms)
         self.ib = IBApi()
-        self.ib.connect("127.0.0.1", 7497, 1)
+        self.ib.connect("127.0.0.1", 7496, 15)
 
         #saperate to threads
         ib_thread = threading.Thread(target=self.run_loop, daemon=True)
@@ -47,12 +49,25 @@ class Bot:
 
         self.ib.reqRealTimeBars(0, contract, 5,"TRADES", 1, [])
 
+        order = Order()
+        contract.primaryExchange = "NASDAQ"
+
+        order.orderType = "LMT"
+        order.lmtPrice = 260
+        order.action = "BUY"
+        order.totalQuantity = 1
+
+        order.eTradeOnly = ''
+        order.firmQuoteOnly =''
+
+        self.ib.placeOrder(152,contract,order)
+
     #listen to socket in saperate thread
     def run_loop(self):
         self.ib.run()
 
     def on_bar_update(self, reqId, time, open_, high, low, close, volume, wap, count):
-        print(close)
+        print("the close price is: ",close, " ,high value was: ", high, " ,the low was: ", low)
 
 
 #start Bot
